@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "openmemory": {
+      "command": "python",
+      "args": ["-m", "mcp"],
+      "url": "http://localhost:8765/mcp/{client_name}/sse/{user_id}",
+      "transport": "sse",
+      "env": {
+        "USER_ID": "your_user_id",
+        "CLIENT_NAME": "cursor"
+      }
+    }
+  }
+}

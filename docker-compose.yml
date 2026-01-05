@@ -1,0 +1,85 @@
+services:
+  mem0_store:
+    image: qdrant/qdrant:latest
+    container_name: openmemory-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./mem0_storage:/qdrant/storage
+    # 移除健康检查，Qdrant 镜像可能没有 wget/curl/bash
+    # 使用 service_started 依赖而不是 service_healthy
+
+  openmemory-api:
+    build:
+      context: api/
+      dockerfile: Dockerfile
+    image: mem0/openmemory-mcp:latest
+    container_name: openmemory-api
+    restart: unless-stopped
+    env_file:
+      - api/.env
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./openmemory.db}
+      - USER=${USER:-default_user}
+      - CREATE_DEFAULT_USER=${CREATE_DEFAULT_USER:-false}
+      # 硅基流动 API 配置 - 使用 1024 维嵌入模型（实际维度）
+      - OPENAI_API_KEY=sk-nndjpptkxakuaogwbixoooieyytcagyyiwczdwcqefppujlj
+      - OPENAI_PROVIDER=openai
+      - OPENAI_BASE_URL=https://api.siliconflow.cn/v1
+      - OPENAI_MODEL=deepseek-ai/DeepSeek-V3
+      - OPENAI_EMBEDDING_MODEL_API_KEY=sk-nndjpptkxakuaogwbixoooieyytcagyyiwczdwcqefppujlj
+      - OPENAI_EMBEDDING_MODEL_BASE_URL=https://api.siliconflow.cn/v1
+      - OPENAI_EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
+      - OPENAI_EMBEDDING_MODEL_DIMS=1024
+      - CATEGORIZATION_OPENAI_BASE_URL=https://api.siliconflow.cn/v1
+      - CATEGORIZATION_OPENAI_API_KEY=sk-nndjpptkxakuaogwbixoooieyytcagyyiwczdwcqefppujlj
+      - CATEGORIZATION_OPENAI_MODEL=deepseek-ai/DeepSeek-V3
+      - CATEGORIZATION_OPENAI_PROVIDER=openai_structured
+      - QDRANT_HOST=mem0_store
+      - QDRANT_PORT=6333
+    depends_on:
+      mem0_store:
+        condition: service_started
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./api:/usr/src/openmemory
+      - ./api/openmemory.db:/usr/src/openmemory/openmemory.db
+    command: >
+      sh -c "uvicorn main:app --host 0.0.0.0 --port 8765 --reload --workers 4"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8765/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  openmemory-ui:
+    build:
+      context: ui/
+      dockerfile: Dockerfile
+    image: mem0/openmemory-ui:latest
+    container_name: openmemory-ui
+    restart: unless-stopped
+    env_file:
+      - ui/.env
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8765}
+      - NEXT_PUBLIC_USER_ID=${NEXT_PUBLIC_USER_ID:-${USER:-default_user}}
+    depends_on:
+      openmemory-api:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  mem0_storage:
+
